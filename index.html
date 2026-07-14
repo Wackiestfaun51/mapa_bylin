@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDR2 RP Companion - Kompletní Panel</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        /* Import nových, skvěle čitelných písem s historickým nádechem */
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lora:ital,wght@0,400..700;1,400..700&family=Montserrat:wght@400;600;700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #0f0c08;
+            /* Lora je krásné a extrémně čitelné knižní písmo */
+            font-family: 'Lora', Georgia, serif;
+            overflow: hidden;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100vh;
+            z-index: 1;
+            background-color: #1a1510;
+        }
+
+        /* RDR2 styl bočního panelu */
+        .filter-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: linear-gradient(135deg, #e6d5b8 0%, #d4bf9c 100%);
+            color: #2b1a09;
+            padding: 20px;
+            border-radius: 4px;
+            border: 3px double #4a3319;
+            outline: 1px solid #d4bf9c;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+            width: 310px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-panel h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #8c1d1d;
+            padding-bottom: 5px;
+            font-size: 15px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #8c1d1d;
+            /* Cinzel vypadá jako vytesaný do kamene / staré knižní nadpisy */
+            font-family: 'Cinzel', serif;
+        }
+
+        /* Vyhledávací pole */
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #5c4028;
+            border-radius: 2px;
+            background-color: #fffdf9;
+            color: #2b1a09;
+            font-family: 'Lora', serif;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .search-box:focus {
+            outline: 2px solid #8c1d1d;
+        }
+
+        /* Sekce s checkboxy */
+        .filter-group {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #bda885;
+            padding-bottom: 10px;
+        }
+
+        .filter-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            /* Montserrat pro čisté ovládací prvky */
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .filter-item-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-item input {
+            margin-right: 10px;
+            accent-color: #8c1d1d;
+            transform: scale(1.2);
+        }
+
+        .filter-count {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            color: #8c1d1d;
+            font-weight: 700;
+        }
+
+        /* Kontejner pro seznam lokací pod filtry */
+        .groups-container {
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 5px;
+        }
+
+        /* Skupina lokace */
+        .location-group {
+            margin-bottom: 15px;
+        }
+
+        .location-group-title {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: #8c1d1d;
+            border-bottom: 1px dashed #8b5a2b;
+            padding-bottom: 3px;
+            margin-bottom: 8px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .location-group-title:hover {
+            color: #2b1a09;
+        }
+
+        /* Jednotlivé byliny v seznamu */
+        .result-link {
+            padding: 6px 10px;
+            margin: 3px 0;
+            background: rgba(255,255,255,0.25);
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'Lora', serif;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-link:hover {
+            background: rgba(140, 29, 29, 0.12);
+            border-left: 3px solid #8c1d1d;
+            padding-left: 12px;
+        }
+
+        .result-icon {
+            font-size: 16px;
+        }
+
+        /* Stylování posuvníku */
+        .groups-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .groups-container::-webkit-scrollbar-thumb {
+            background-color: #8c1d1d;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="filter-panel">
+        <h3>Hledat byliny</h3>
+        <input type="text" id="map-search" class="search-box" placeholder="Zadej název byliny nebo lokace..." oninput="vykreslitVse()">
+
+        <h3>Filtr kategorií</h3>
+        <div class="filter-group">
+            <label class="filter-item">
+                <span class="filter-item-left">
+                    <input type="checkbox" id="filter-mata" checked onchange="vykreslitVse()"> 🌿 Divoká máta
+                </span>
+                <span id="count-mata" class="filter-count">(0x)</span>
+            </label>
+            <label class="filter-item">
+                <span class="filter-item-left">
+                    <input type="checkbox" id="filter-salvej" checked onchange="vykreslitVse()"> 💜 Šalvěj
+                </span>
+                <span id="count-salvej" class="filter-count">(0x)</span>
+            </label>
+            <label class="filter-item">
+                <span class="filter-item-left">
+                    <input type="checkbox" id="filter-mrkev" checked onchange="vykreslitVse()"> 🥕 Divoká mrkev
+                </span>
+                <span id="count-mrkev" class="filter-count">(0x)</span>
+            </label>
+        </div>
+
+        <h3>Lokace v okolí</h3>
+        <div id="groups" class="groups-container"></div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. Inicializace mapy
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -3,
+            maxZoom: 3
+        });
+
+        const bounds = [[0, 0], [3072, 4096]];
+        const rdr2Map = L.imageOverlay('rdr2-map.jpg', bounds).addTo(map);
+        map.setView([1536, 2048], -2);
+
+        // 2. Definice ikon s opraveným popupAnchor
+        const ikony = {
+            mata: L.divIcon({ 
+                html: '<div style="font-size: 24px; transform: translate(-50%, -50%);">🌿</div>', 
+                iconSize: [30, 30], className: 'herb-icon', popupAnchor: [0, -20] 
+            }),
+            salvej: L.divIcon({ 
+                html: '<div style="font-size: 24px; transform: translate(-50%, -50%);">💜</div>', 
+                iconSize: [30, 30], className: 'herb-icon', popupAnchor: [0, -20]
+            }),
+            mrkev: L.divIcon({ 
+                html: '<div style="font-size: 24px; transform: translate(-50%, -50%);">🥕</div>', 
+                iconSize: [30, 30], className: 'herb-icon', popupAnchor: [0, -20]
+            })
+        };
+
+        const emojiSymboly = { mata: '🌿', salvej: '💜', mrkev: '🥕' };
+
+        // 3. Databáze bylin s lokacemi
+        const databazeBylin = [
+            { id: 1, nazev: "Divoká máta", lokace: "Území Wapiti", typ: "mata", souradnice: [2500, 2100], popis: "Roste v horské roklině kousek pod hlavním táborem." },
+            { id: 2, nazev: "Šalvěj", lokace: "Valentine a okolí", typ: "salvej", souradnice: [1800, 2200], popis: "Na suché louce jižně od vlakového nádraží." },
+            { id: 3, nazev: "Divoká mrkev", lokace: "Valentine a okolí", typ: "mrkev", souradnice: [1950, 2050], popis: "U cesty směrem do Cumberland Forest." },
+            { id: 4, nazev: "Divoká máta", lokace: "Rhodes a bažiny", typ: "mata", souradnice: [900, 3000], popis: "V mokřadech na břehu řeky." },
+            { id: 5, nazev: "Šalvěj", lokace: "Rhodes a bažiny", typ: "salvej", souradnice: [1050, 2800], popis: "V červené hlíně kousek za městem." }
+        ];
+
+        let aktivniMarkery = {};
+
+        // 4. Hlavní sjednocená funkce pro vyhledávání, filtry a vykreslení
+        function vykreslitVse() {
+            // Nejdřív kompletně vyčistíme mapu od starých markerů
+            Object.values(aktivniMarkery).forEach(marker => map.removeLayer(marker));
+            aktivniMarkery = {};
+
+            const dotaz = document.getElementById('map-search').value.toLowerCase();
+            const zobrazitMatu = document.getElementById('filter-mata').checked;
+            const zobrazitSalvej = document.getElementById('filter-salvej').checked;
+            const zobrazitMrkev = document.getElementById('filter-mrkev').checked;
+
+            const kontejnerSkupin = document.getElementById('groups');
+            kontejnerSkupin.innerHTML = ''; // Vyčistíme spodní seznam lokací
+
+            const seskupeneByliny = {};
+
+            // Pomocné čítače pro celkové počty odpovídající textovému vyhledávání
+            let celkemMata = 0;
+            let celkemSalvej = 0;
+            let celkemMrkev = 0;
+
+            // Projdeme databázi a aplikujeme jak checkboxy, tak textové vyhledávání
+            databazeBylin.forEach(bylina => {
+                // Krok A: Filtrování podle textu ve vyhledávači (spočítáme, co odpovídá textu pro závorky)
+                const odpovidaVyhledavani = 
+                    bylina.nazev.toLowerCase().includes(dotaz) || 
+                    bylina.lokace.toLowerCase().includes(dotaz) || 
+                    bylina.popis.toLowerCase().includes(dotaz);
+
+                if (dotaz && !odpovidaVyhledavani) return;
+
+                // Přičteme do statistik podle typu, pokud bylina prošla textovým hledáním
+                if (bylina.typ === 'mata') celkemMata++;
+                if (bylina.typ === 'salvej') celkemSalvej++;
+                if (bylina.typ === 'mrkev') celkemMrkev++;
+
+                // Krok B: Filtrování podle samotných checkboxů (kategorií)
+                if (bylina.typ === 'mata' && !zobrazitMatu) return;
+                if (bylina.typ === 'salvej' && !zobrazitSalvej) return;
+                if (bylina.typ === 'mrkev' && !zobrazitMrkev) return;
+
+                // Krok C: Seskupení pod danou lokaci
+                if (!seskupeneByliny[bylina.lokace]) {
+                    seskupeneByliny[bylina.lokace] = [];
+                }
+                seskupeneByliny[bylina.lokace].push(bylina);
+
+                // Krok D: Vykreslení markeru na mapu
+                const novyMarker = L.marker(bylina.souradnice, { icon: ikony[bylina.typ] }).addTo(map);
+                novyMarker.bindPopup(`
+                    <div style="font-family: 'Playfair Display', serif; color: #2b1a09; width: 200px;">
+                        <h4 style="margin: 0 0 5px 0; color: #8c1d1d; font-size: 16px;">${bylina.nazev}</h4>
+                        <p style="margin: 0 0 3px 0; font-size: 11px; text-transform: uppercase; color: #8b5a2b; font-weight: bold;">${bylina.lokace}</p>
+                        <p style="margin: 0 0 8px 0; font-size: 13px;">${bylina.popis}</p>
+                        <small style="color: #666;">Pozice: [${bylina.souradnice.join(', ')}]</small>
+                    </div>
+                `);
+                
+                aktivniMarkery[bylina.id] = novyMarker;
+            });
+
+            // Krok D2: Aktualizace dynamických čísel v HTML u checkboxů
+            document.getElementById('count-mata').innerText = `(${celkemMata}x)`;
+            document.getElementById('count-salvej').innerText = `(${celkemSalvej}x)`;
+            document.getElementById('count-mrkev').innerText = `(${celkemMrkev}x)`;
+
+            // Krok E: Generování HTML pro seskupený seznam v panelu
+            for (const [nazevLokace, bylinyVSkupine] of Object.entries(seskupeneByliny)) {
+                const skupinaDiv = document.createElement('div');
+                skupinaDiv.className = 'location-group';
+
+                const nadpisSkupiny = document.createElement('div');
+                nadpisSkupiny.className = 'location-group-title';
+                nadpisSkupiny.innerHTML = `<span>📍 ${nazevLokace}</span> <small>(${bylinyVSkupine.length}x)</small>`;
+                
+                // Kliknutím na nadpis lokace se vycentruje na první bylinu v této lokaci
+                nadpisSkupiny.onclick = function() {
+                    if (bylinyVSkupine.length > 0) {
+                        focusNaBylinu(bylinyVSkupine[0].souradnice, bylinyVSkupine[0].id);
+                    }
+                };
+                skupinaDiv.appendChild(nadpisSkupiny);
+
+                bylinyVSkupine.forEach(bylina => {
+                    const prvekByliny = document.createElement('div');
+                    prvekByliny.className = 'result-link';
+                    prvekByliny.innerHTML = `
+                        <span>${bylina.nazev}</span>
+                        <span class="result-icon">${emojiSymboly[bylina.typ]}</span>
+                    `;
+
+                    prvekByliny.onclick = function(e) {
+                        e.stopPropagation(); // Zabrání prokliknutí na nadpis
+                        focusNaBylinu(bylina.souradnice, bylina.id);
+                    };
+
+                    skupinaDiv.appendChild(prvekByliny);
+                });
+
+                kontejnerSkupin.appendChild(skupinaDiv);
+            }
+
+            if (Object.keys(seskupeneByliny).length === 0) {
+                kontejnerSkupin.innerHTML = '<div style="text-align:center; color:#8c1d1d; font-style:italic; padding-top:10px;">Nic neodpovídá filtrům...</div>';
+            }
+        }
+
+        // 5. Plynulý přesun kamery a otevření pop-upu
+        function focusNaBylinu(souradnice, id) {
+            map.setView(souradnice, 0, { animate: true, duration: 1.2 });
+            setTimeout(() => {
+                if (aktivniMarkery[id]) {
+                    aktivniMarkery[id].openPopup();
+                }
+            }, 450);
+        }
+
+        // První načtení stránek
+        vykreslitVse();
+
+        // 6. Vývojářský klikací detektor souřadnic do konzole (F12)
+        map.on('click', function(e) {
+            console.log("Nové souřadnice:", [Math.round(e.latlng.lat), Math.round(e.latlng.lng)]);
+        });
+    </script>
+</body>
+</html>
